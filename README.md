@@ -2,15 +2,15 @@
 
 Generator for (incremental) Wireguard VPN configuration via JSON config files.
 
-VPN config is stored in JSON file; the topology is always star, with `net` being the central node of the VPN. Its endpoints are given by `extAddr` and `extPort`. The interface (`iface`) is used on the central node, peers have their configuration stored as `iface_peer.conf`, usable with `wg-quick`.
+**Configuration file:** VPN config is stored in JSON file; the topology is always star, `net` being the central node (hub) of the VPN. Its endpoints are given by `extAddr` and `extPort`. The interface (`iface`) is used on the central node, peers have their configuration stored as `iface_peer.conf`, usable with `wg-quick`. See below for example configuration.
 
-Generated files are:
+**Generated files** are:
 
-* `{hubDir}/{iface}.conf` (where `hubDir` is usually `/etc/wireguard`); it contains the central node definition (including the private key), plus all peers (their public key and network addresses). When `restart` is true, `sudo systemctl restart wg-quick@{iface}.service` is called to apply the new configuration.
+* `{hubDir}/{iface}.conf` (where `hubDir` is usually `/etc/wireguard`); it contains the central node definition (including the private key), plus all peers (their public key and network addresses). When `restart` is true, `systemctl restart wg-quick@{iface}.service` is called to apply the new configuration.
 * `{peerDir}/{iface}_{peer}.conf`: this file is to be installed on clients, contains the peer's private key (for authentication to the central node), central node's publick key and its endpoint to connect to. Only VPN-related traffic will be routed through the connection. *Distribute this file to the end-user securely*.
 * `peerMap` is JSON for mapping public keys to user-friendly names (used by a VPN monitoring tool).
 
-**Incremental operation**: if a peer (identified by itse friendly name) exists already, it is entirely skipped (this will be improved in the future: if it exists in the server, it will be skipped as well).
+**Incremental operation**: if a peer (identified by itse friendly name) exists already in the hub config, it is entirely skipped.
 
 ## Client installation
 

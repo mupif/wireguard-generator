@@ -37,7 +37,7 @@ opts=WgOpts.parse_file(cOpts.config)
 ifacecfg=f'{opts.hubDir}/{opts.iface}.conf'
 wc=wgconfig.WGConfig(ifacecfg)
 if not os.path.exists(ifacecfg):
-    log.info(f'Creating new {ifacecfg}.')
+    log.info(f'Creating new hub config: {ifacecfg}.')
     wc.initialize_file()
     wc.add_attr(None,'Address',opts.net)
     wc.add_attr(None,'ListenPort',opts.extPort)
@@ -45,12 +45,12 @@ if not os.path.exists(ifacecfg):
     wc.add_attr(None,'PostUp',f'iptables -A INPUT -p udp --dport {opts.extPort} -j ACCEPT')
     if not dryRun: wc.write_file()
     else: log.info(f'--dry-run: not writing {ifacecfg}')
-else: log.info(f'Using existing {ifacecfg}.')
+else: log.info(f'Using existing hub config: {ifacecfg}.')
 
 def reread(cfg):
     'Reload config and load friendly_json comment'
-    if not dryRun: cfg.read_file()
-    else: log.info(f'--dry-run: {ifacecfg} not re-read')
+    if not (dryRun and not os.path.exists(ifacecfg)): cfg.read_file()
+    else: log.info(f'--dry-run: non-existent {ifacecfg} not re-read')
     for peer,cfg in cfg.peers.items():
         friendly=[json.loads(l.split('=',1)[1]) for l in cfg['_rawdata'] if l.startswith('# friendly_json =')]
         if len(friendly)!=1: raise ValueError(f'Multiple or no friendly_json comments in peer {peer}.')
@@ -58,6 +58,7 @@ def reread(cfg):
 
 def peers_df(cfg):
     'Return peer configuration as pandas dataframe'
+    if not cfg.peers: return None
     return pd.DataFrame.from_dict({'friendly name':[d['friendly']['name'] for d in cfg.peers.values()],'IP address':[d['AllowedIPs'] for d in cfg.peers.values()],'public key':list(cfg.peers.keys())})
 
 reread(wc)
@@ -65,9 +66,13 @@ log.info('Current peer list:\n'+str(peers_df(wc)))
 
 if opts.peers:
     for name,ip in opts.peers:
-        if os.path.exists(peerCfg:=f'{opts.peerDir}/{opts.iface}_{name}.conf'):
-            log.warning(f'Peer {name} already exists ({peerCfg}), skipping.')
+        if pp:=[peer for peer,data in wc.peers.items() if data['friendly']['name']==name]:
+            log.warning(f'Peer {name} already exists in hub config (pubkey: {pp[0]}), skipping.')
             continue
+        peerCfg=f'{opts.peerDir}/{opts.iface}_{name}.conf'
+        #if os.path.exists(peerCfg:=f'{opts.peerDir}/{opts.iface}_{name}.conf'):
+        #    log.warning(f'Peer {name} already exists ({peerCfg}), skipping.')
+        #    continue
         if len(f'{opts.iface}_{name}')>15: raise ValueError(f'{opts.iface}_{name} is longer than 15 characters (maximum network interface name in Linux).')
         priv,pub=wgexec.generate_keypair()
         preshared=wgexec.generate_presharedkey()
@@ -79,7 +84,7 @@ if opts.peers:
         # https://github.com/MindFlavor/prometheus_wireguard_exporter/issues/54
         comment='# friendly_json = {"name":"%s"}'%name
 
-        log.info(f'Adding peer: {name} {pub} {peerIpMask}')
+        log.info(f'Adding peer: {name} {peerIpMask} {pub}')
 
         # add to the central node
         wc.add_peer(pub)
