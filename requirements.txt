@@ -1,0 +1,5 @@
+wgconfig
+# configargparse
+qlogging>=1.3.0
+pandas
+pydantic
