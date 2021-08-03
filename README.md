@@ -26,12 +26,12 @@ To set up the VPN itself,
 Ping the nameserver form the console (`cmd.exe` in windows), if Pyro5 utils are in the path:
 
 ```
-$ pyro5-nsc -n 172.20.0.1 -p 10000 ping
+$ pyro5-nsc -n 172.22.2.1 -p 10000 ping
 Name server ping ok.
 
 ```
 
-Alternatively, run `python3 -c 'import Pyro5.api; print(Pyro5.api.locate_ns(host="172.20.0.1",port=10000))'`
+Alternatively, run `python3 -c 'import Pyro5.api; print(Pyro5.api.locate_ns(host="172.22.2.1",port=10000))'`
 
 which should show something like the following if the server can be connected to:
 ```
