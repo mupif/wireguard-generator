@@ -21,9 +21,10 @@ class WgOpts(pydantic.BaseModel):
     net: ipaddress.IPv4Interface='172.16.0.1/12'
     extAddr: ipaddress.IPv4Address='1.2.3.4'
     extPort: int=56789
-    hubDir: pydantic.DirectoryPath='/etc/wireguard/'
-    peerDir: pydantic.DirectoryPath='./peers'
+    hubDir: pydantic.Path='/etc/wireguard/'
+    peerDir: pydantic.Path='./peers'
     restart: bool=True
+    iptables: bool=False
     peerMap: pathlib.Path='./peers.json'
     peers: typing.List[typing.Tuple[str,str]]=[]
 
@@ -34,6 +35,14 @@ cOpts=parser.parse_args()
 dryRun=cOpts.dry_run
 opts=WgOpts.parse_file(cOpts.config)
 
+def ensureDir(p,role):
+    if not os.path.exists(p):
+        log.info(f'Creating new directory ({role}): {p}')
+        os.makedirs(o)
+
+ensureDir(opts.hubDir,role='hubDir')
+ensureDir(opts.PeerDir,role='peerDir')
+
 ifacecfg=f'{opts.hubDir}/{opts.iface}.conf'
 wc=wgconfig.WGConfig(ifacecfg)
 if not os.path.exists(ifacecfg):
@@ -42,7 +51,7 @@ if not os.path.exists(ifacecfg):
     wc.add_attr(None,'Address',opts.net)
     wc.add_attr(None,'ListenPort',opts.extPort)
     wc.add_attr(None,'PrivateKey',wgexec.generate_privatekey())
-    wc.add_attr(None,'PostUp',f'iptables -A INPUT -p udp --dport {opts.extPort} -j ACCEPT')
+    if opts.iptables: wc.add_attr(None,'PostUp',f'iptables -A INPUT -p udp --dport {opts.extPort} -j ACCEPT')
     if not dryRun: wc.write_file()
     else: log.info(f'--dry-run: not writing {ifacecfg}')
 else: log.info(f'Using existing hub config: {ifacecfg}.')
