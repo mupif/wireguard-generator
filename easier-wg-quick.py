@@ -38,7 +38,7 @@ opts=WgOpts.parse_file(cOpts.config)
 def ensureDir(p,role):
     if not os.path.exists(p):
         log.info(f'Creating new directory ({role}): {p}')
-        os.makedirs(o)
+        os.makedirs(p)
 
 ensureDir(opts.hubDir,role='hubDir')
 ensureDir(opts.PeerDir,role='peerDir')
