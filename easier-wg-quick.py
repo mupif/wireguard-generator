@@ -21,8 +21,8 @@ class WgOpts(pydantic.BaseModel):
     net: ipaddress.IPv4Interface='172.16.0.1/12'
     extAddr: ipaddress.IPv4Address='1.2.3.4'
     extPort: int=56789
-    hubDir: pydantic.Path='/etc/wireguard/'
-    peerDir: pydantic.Path='./peers'
+    hubDir: pathlib.Path='/etc/wireguard/'
+    peerDir: pathlib.Path='./peers'
     restart: bool=True
     iptables: bool=False
     peerMap: pathlib.Path='./peers.json'
@@ -36,9 +36,9 @@ dryRun=cOpts.dry_run
 opts=WgOpts.parse_file(cOpts.config)
 
 def ensureDir(p,role):
-    if not os.path.exists(p):
+    if not p.exists():
         log.info(f'Creating new directory ({role}): {p}')
-        os.makedirs(p)
+        os.makedirs(str(p))
 
 ensureDir(opts.hubDir,role='hubDir')
 ensureDir(opts.PeerDir,role='peerDir')
