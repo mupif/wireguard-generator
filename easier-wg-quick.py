@@ -41,7 +41,7 @@ def ensureDir(p,role):
         os.makedirs(str(p))
 
 ensureDir(opts.hubDir,role='hubDir')
-ensureDir(opts.PeerDir,role='peerDir')
+ensureDir(opts.peerDir,role='peerDir')
 
 ifacecfg=f'{opts.hubDir}/{opts.iface}.conf'
 wc=wgconfig.WGConfig(ifacecfg)
