@@ -1,6 +1,6 @@
 {
 	"iface":"testXX",
-	"net":"172.16.0.1/12",
+	"addr":"172.16.0.1/12",
 	"extAddr":"1.2.3.4",
 	"extPort":"56789",
 	"hubDir":"testXX",

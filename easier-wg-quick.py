@@ -18,7 +18,7 @@ class WgOpts(pydantic.BaseModel):
     class Config:
         validate_all=True
     iface: str
-    net: ipaddress.IPv4Interface='172.16.0.1/12'
+    addr: ipaddress.IPv4Interface='172.16.0.1/12'
     extAddr: ipaddress.IPv4Address='1.2.3.4'
     extPort: int=56789
     hubDir: pathlib.Path='/etc/wireguard/'
@@ -32,12 +32,14 @@ class WgOpts(pydantic.BaseModel):
 parser=argparse.ArgumentParser()
 parser.add_argument('-n','--dry-run',action='store_true',help="Do not write anything, only pretend.")
 parser.add_argument('-c','--config',type=str,default='easier-wg-quick.json',help='JSON configuration file to read')
-parser.add_argument('--rewrite',action='store_true',help='Rewrite peer configs if existing (using their previous keys)')
+parser.add_argument('--keep-intact',action='store_true',help="Preserve existing peer configs intact (not even writing new options; debugging only)")
 parser.add_argument('-v','--verbose',action='store_true',help='Show debugging messages')
 cOpts=parser.parse_args()
 if cOpts.verbose: log=qlogging.get_logger(level='debug')
 dryRun=cOpts.dry_run
 opts=WgOpts.parse_file(cOpts.config)
+
+if not opts.addr.ip.is_private: raise RuntimeError('Hub IP {opts.addr.ip} is not a private IP address.')
 
 def ensureDir(p,role):
     if not p.exists():
@@ -52,7 +54,7 @@ wc=wgconfig.WGConfig(ifacecfg)
 if not os.path.exists(ifacecfg):
     log.info(f'Creating new hub config: {ifacecfg}.')
     wc.initialize_file()
-    wc.add_attr(None,'Address',opts.net)
+    wc.add_attr(None,'Address',opts.addr)
     wc.add_attr(None,'ListenPort',opts.extPort)
     wc.add_attr(None,'PrivateKey',wgexec.generate_privatekey())
     if opts.iptables: wc.add_attr(None,'PostUp',f'iptables -A INPUT -p udp --dport {opts.extPort} -j ACCEPT')
@@ -79,15 +81,16 @@ log.info('Current peer list:\n'+str(peers_df(wc)))
 
 if opts.peers:
     for name,ip in opts.peers:
+        if ipaddress.ip_address(ip) not in opts.addr.network: raise RuntimeError('Peer {name} IP {ip} is not hub {opts.addr} network.')
         peerCfg=f'{opts.peerDir}/{opts.iface}_{name}.conf'
         log.debug(peerCfg)
         extant=bool(pp:=[peer for peer,data in wc.peers.items() if data['friendly']['name']==name])
-        if extant and not cOpts.rewrite:
-            log.warning(f'Peer {name} already exists in hub config (pubkey: {pp[0]}), skipping.')
+        if extant and cOpts.keep_intact:
+            log.warning(f'{name}: not touching existing in hub config as per --keep-intact (pubkey: {pp[0]}).')
             continue
         if extant:
-            log.warning(f'Peer {name} already exists in hub config (pubkey: {pp[0]}), will --rewrite.')
-            if not os.path.exists(peerCfg): raise RuntimeError(f'Unable to find existing config file for peer {name} in {peerCfg}, cannot --rewrite.')
+            log.info(f'{name}: update existing in hub config')
+            if not os.path.exists(peerCfg): raise RuntimeError(f'Unable to find existing config file for peer {name} in {peerCfg}, cannot update (delete the peer from hub config by hand).')
             cpeer0=wgconfig.WGConfig(peerCfg)
             cpeer0.read_file()
             pub=pp[0]
@@ -95,10 +98,11 @@ if opts.peers:
             preshared=wc.peers[pub]['PresharedKey']
             wc.del_peer(pub)
         else:
+            log.info('{name}: creating new peer')
             priv,pub=wgexec.generate_keypair()
             preshared=wgexec.generate_presharedkey()
         if len(f'{opts.iface}_{name}')>15: raise ValueError(f'{opts.iface}_{name} is longer than 15 characters (maximum network interface name in Linux).')
-        peerIpMask=f'{ip}/{opts.net.network.prefixlen}'
+        peerIpMask=f'{ip}/{opts.addr.network.prefixlen}'
         # check for IP addresses already in use
         if xx:=[data['friendly']['name'] for peer,data in wc.peers.items() if data['AllowedIPs']==peerIpMask]:
             raise ValueError('IP address {peerIpMask} already used by other peers: {", ".join(xx)}')
@@ -106,7 +110,7 @@ if opts.peers:
         # https://github.com/MindFlavor/prometheus_wireguard_exporter/issues/54
         comment='# friendly_json = {"name":"%s"}'%name
 
-        log.info(f'Adding peer: {name} {peerIpMask} {pub}')
+        log.info(f'{name}: {peerIpMask} {pub}')
 
         # add to the central node
         wc.add_peer(pub)
@@ -124,11 +128,9 @@ if opts.peers:
         wcpub=wgexec.get_publickey(wc.interface['PrivateKey'])
         cpeer.add_peer(wcpub)
         cpeer.add_attr(wcpub,'PresharedKey',preshared)
-        cpeer.add_attr(wcpub,'AllowedIPs',peerIpMask)
+        cpeer.add_attr(wcpub,'AllowedIPs',opts.addr.network)
         cpeer.add_attr(wcpub,'Endpoint',f'{opts.extAddr}:{wc.interface["ListenPort"]}')
-        if opts.keepalive>0:
-            print(f'Keepalive is {opts.keepalive}')
-            cpeer.add_attr(wcpub,'PersistentKeepalive',opts.keepalive)
+        if opts.keepalive>0: cpeer.add_attr(wcpub,'PersistentKeepalive',opts.keepalive)
         if not dryRun: cpeer.write_file()
         else: log.info(f'--dry-run: not writing {peerCfg}')
 
