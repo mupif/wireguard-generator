@@ -25,13 +25,17 @@ class WgOpts(pydantic.BaseModel):
     peerDir: pathlib.Path='./peers'
     restart: bool=True
     iptables: bool=False
+    keepalive: int=0
     peerMap: pathlib.Path='./peers.json'
     peers: typing.List[typing.Tuple[str,str]]=[]
 
 parser=argparse.ArgumentParser()
 parser.add_argument('-n','--dry-run',action='store_true',help="Do not write anything, only pretend.")
 parser.add_argument('-c','--config',type=str,default='easier-wg-quick.json',help='JSON configuration file to read')
+parser.add_argument('--rewrite',action='store_true',help='Rewrite peer configs if existing (using their previous keys)')
+parser.add_argument('-v','--verbose',action='store_true',help='Show debugging messages')
 cOpts=parser.parse_args()
+if cOpts.verbose: log=qlogging.get_logger(level='debug')
 dryRun=cOpts.dry_run
 opts=WgOpts.parse_file(cOpts.config)
 
@@ -75,16 +79,25 @@ log.info('Current peer list:\n'+str(peers_df(wc)))
 
 if opts.peers:
     for name,ip in opts.peers:
-        if pp:=[peer for peer,data in wc.peers.items() if data['friendly']['name']==name]:
+        peerCfg=f'{opts.peerDir}/{opts.iface}_{name}.conf'
+        log.debug(peerCfg)
+        extant=bool(pp:=[peer for peer,data in wc.peers.items() if data['friendly']['name']==name])
+        if extant and not cOpts.rewrite:
             log.warning(f'Peer {name} already exists in hub config (pubkey: {pp[0]}), skipping.')
             continue
-        peerCfg=f'{opts.peerDir}/{opts.iface}_{name}.conf'
-        #if os.path.exists(peerCfg:=f'{opts.peerDir}/{opts.iface}_{name}.conf'):
-        #    log.warning(f'Peer {name} already exists ({peerCfg}), skipping.')
-        #    continue
+        if extant:
+            log.warning(f'Peer {name} already exists in hub config (pubkey: {pp[0]}), will --rewrite.')
+            if not os.path.exists(peerCfg): raise RuntimeError(f'Unable to find existing config file for peer {name} in {peerCfg}, cannot --rewrite.')
+            cpeer0=wgconfig.WGConfig(peerCfg)
+            cpeer0.read_file()
+            pub=pp[0]
+            priv=cpeer0.interface['PrivateKey']
+            preshared=wc.peers[pub]['PresharedKey']
+            wc.del_peer(pub)
+        else:
+            priv,pub=wgexec.generate_keypair()
+            preshared=wgexec.generate_presharedkey()
         if len(f'{opts.iface}_{name}')>15: raise ValueError(f'{opts.iface}_{name} is longer than 15 characters (maximum network interface name in Linux).')
-        priv,pub=wgexec.generate_keypair()
-        preshared=wgexec.generate_presharedkey()
         peerIpMask=f'{ip}/{opts.net.network.prefixlen}'
         # check for IP addresses already in use
         if xx:=[data['friendly']['name'] for peer,data in wc.peers.items() if data['AllowedIPs']==peerIpMask]:
@@ -113,6 +126,9 @@ if opts.peers:
         cpeer.add_attr(wcpub,'PresharedKey',preshared)
         cpeer.add_attr(wcpub,'AllowedIPs',peerIpMask)
         cpeer.add_attr(wcpub,'Endpoint',f'{opts.extAddr}:{wc.interface["ListenPort"]}')
+        if opts.keepalive>0:
+            print(f'Keepalive is {opts.keepalive}')
+            cpeer.add_attr(wcpub,'PersistentKeepalive',opts.keepalive)
         if not dryRun: cpeer.write_file()
         else: log.info(f'--dry-run: not writing {peerCfg}')
 

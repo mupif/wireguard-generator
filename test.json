@@ -1,12 +1,13 @@
 {
-	"iface":"musicode",
+	"iface":"testXX",
 	"net":"172.16.0.1/12",
 	"extAddr":"1.2.3.4",
 	"extPort":"56789",
-	"hubDir":"test",
-	"peerDir":"test/peers",
+	"hubDir":"testXX",
+	"peerDir":"testXX/peers",
 	"restart":0,
-	"peerMap":"test/peers.json",
+	"peerMap":"testXX/peers.json",
+	"keepalive":20,
 	"peers":[
 	        ["peer1","172.16.0.2"],
 	        ["peer2","172.16.0.3"],
